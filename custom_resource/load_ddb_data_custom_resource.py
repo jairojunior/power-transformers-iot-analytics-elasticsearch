@@ -24,7 +24,7 @@ class LoadDDBDataCustomResource(core.Construct):
         )
 
         function.add_to_role_policy(
-            iam.PolicyStatement(actions=['dynamodb:PutItem'], resources=[f"{table_arn}/*"],
+            iam.PolicyStatement(actions=['dynamodb:PutItem'], resources=["*"],
                                 effect=iam.Effect.ALLOW))
 
         resource = cfn.CustomResource(
