@@ -18,7 +18,7 @@ def handler(event, context):
     for e in event:
         name = e['id']
 
-        response = client.get_item(TableName=os.environ('TABLE_NAME'), Key={'name': {'S': name}})
+        response = client.get_item(TableName=os.environ['TABLE_NAME'], Key={'name': {'S': name}})
         item = response['Item']
 
         e['MonthsOfUsage'] = int(item['monthsOfUsage']['N'])

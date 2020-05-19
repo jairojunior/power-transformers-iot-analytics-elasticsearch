@@ -1,11 +1,9 @@
-[ ] Add permission to data_enrichment function
+[ ] Kibana Scriptable fields
 
-[ ] Scriptable fields
+[ ] IoTTopicRule
 
 [ ] S3 IAM Roles specific to buckets and r/w operations
 
-[ ] Review ElasticSearch Domain IAM
-
-[ ] Scheduled dataset (IoT Analytics) writes an empty file to S3
+[ ] Scheduled Dataset (IoT Analytics) writes an empty file to S3
 
 [ ] Upgrade CDK to 1.39 (currently 1.27)

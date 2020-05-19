@@ -45,10 +45,11 @@ class IotAnalyticsEsStack(core.Stack):
 
         function.add_environment('TABLE_NAME', power_transformers.table_name)
         function.add_to_role_policy(
-            iam.PolicyStatement(actions=['dynamodb:GetItem'], resources=[f"{power_transformers.table_arn}/*"],
+            iam.PolicyStatement(actions=['dynamodb:GetItem'], resources=[f"{power_transformers.table_arn}"],
                                 effect=iam.Effect.ALLOW))
 
-        # function.add_permission(id='enrichmentFunctionIotAnalytics', principal='iotanalytics.amazonaws.com', action='lambda:InvokeFunction')
+        function.add_permission(principal=iam.ServicePrincipal('iotanalytics.amazonaws.com'),
+                                action='lambda:InvokeFunction', id='pt-iot-analytics')
 
         bucket = s3.Bucket(self, 'PowerTransformersTelemetryBucket',
                            bucket_name=f"{props['projectName'].lower()}-{core.Aws.ACCOUNT_ID}",
@@ -63,14 +64,8 @@ class IotAnalyticsEsStack(core.Stack):
                            managed_policies=[iam.ManagedPolicy.from_aws_managed_policy_name('AmazonS3FullAccess')]
                            )
 
-        # put_object_policy = iam.PolicyStatement(actions=['s3:PutObject'], resources=[f"{bucket.bucket_arn}/*"],
-        #                         effect=iam.Effect.ALLOW)
-        #
-        # get_bucket_location_policy = iam.PolicyStatement(actions=['s3:*'], resources=["*"],
-        #                         effect=iam.Effect.ALLOW)
-        #
-        # s3_role.add_to_policy(put_object_policy)
-        # s3_role.add_to_policy(get_bucket_location_policy)
+        # s3_role.add_to_policy(iam.PolicyStatement(actions=["s3:PutObject", "s3:DeleteObject", "s3:GetBucketLocation"],
+        #                       resources=[f"{bucket.bucket_arn}", f"{bucket.bucket_arn}/*"], effect=iam.Effect.ALLOW))
 
         s3_output_role = iam.Role(self, "IotAnalyticsS3OutputRole",
                                   assumed_by=iam.ServicePrincipal("iotanalytics.amazonaws.com"),
@@ -78,30 +73,23 @@ class IotAnalyticsEsStack(core.Stack):
                                       iam.ManagedPolicy.from_aws_managed_policy_name('AmazonS3FullAccess')],
                                   )
 
-        # put_object_policy = iam.PolicyStatement(actions=['s3:PutObject'], resources=[f"{output_bucket.bucket_arn}/*"],
-        #                                         effect=iam.Effect.ALLOW)
-        #
-        # get_bucket_location_policy = iam.PolicyStatement(actions=['s3:*'],
-        #                                                  resources=["*"],
-        #                                                  effect=iam.Effect.ALLOW)
-        #
-        # s3_output_role.add_to_policy(put_object_policy)
-        # s3_output_role.add_to_policy(get_bucket_location_policy)
+        # s3_output_role.add_to_policy(iam.PolicyStatement(actions=["s3:PutObject", "s3:DeleteObject", "s3:GetBucketLocation"],
+        #                       resources=[f"{output_bucket.bucket_arn}", f"{output_bucket.bucket_arn}/*"], effect=iam.Effect.ALLOW))
 
         project_name = props['projectName'].lower().replace('-', '_')
 
         channel_name = f"{project_name}_channel"
         datastore_name = f"{project_name}_datastore"
 
-        channel_s3 = CHANNEL.CustomerManagedS3Property(bucket=bucket.bucket_name, key_prefix='channel/',
+        channel_s3 = CHANNEL.CustomerManagedS3Property(bucket=bucket.bucket_name, key_prefix='raw/',
                                                        role_arn=s3_role.role_arn)
         channel_storage = CHANNEL.ChannelStorageProperty(customer_managed_s3=channel_s3)
 
-        channel = CHANNEL(self, 'iot_channel',
-                          channel_name=channel_name,
-                          channel_storage=channel_storage)
+        CHANNEL(self, 'iot_channel',
+                channel_name=channel_name,
+                channel_storage=channel_storage)
 
-        datastore_s3 = DATASTORE.CustomerManagedS3Property(bucket=bucket.bucket_name, key_prefix='datastore/',
+        datastore_s3 = DATASTORE.CustomerManagedS3Property(bucket=bucket.bucket_name, key_prefix='processed/',
                                                            role_arn=s3_role.role_arn)
 
         datastore_storage = DATASTORE.DatastoreStorageProperty(customer_managed_s3=datastore_s3)
@@ -163,6 +151,23 @@ class IotAnalyticsEsStack(core.Stack):
                                                     allow_unauthenticated_identities=False,
                                                     cognito_identity_providers=[identity_provider])
 
+        # Apply least privilege
+        cognito_authenticated_role = iam.Role(self, "CognitoAuthRole",
+                                              assumed_by=iam.FederatedPrincipal("cognito-identity.amazonaws.com",
+                                                                                assume_role_action='sts:AssumeRoleWithWebIdentity',
+                                                                                conditions={'StringEquals': {
+                                                                                    'cognito-identity.amazonaws.com:aud': identity_pool.ref},
+                                                                                    'ForAnyValue:StringLike': {
+                                                                                        'cognito-identity.amazonaws.com:amr': 'authenticated'}}
+                                                                                ),
+                                              managed_policies=[
+                                                  iam.ManagedPolicy.from_aws_managed_policy_name('AmazonESFullAccess')]
+                                              )
+
+        aws_cognito.CfnIdentityPoolRoleAttachment(self, 'identityPoolRoleAttachment',
+                                                  identity_pool_id=identity_pool.ref,
+                                                  roles={'authenticated': cognito_authenticated_role.role_arn})
+
         cognito_options = DOMAIN.CognitoOptionsProperty(enabled=True, user_pool_id=user_pool.user_pool_id,
                                                         identity_pool_id=identity_pool.ref,
                                                         role_arn=f"arn:aws:iam::{core.Aws.ACCOUNT_ID}:role/service-role/CognitoAccessForAmazonES")
@@ -176,10 +181,10 @@ class IotAnalyticsEsStack(core.Stack):
 
         es_domain_arn = f"arn:aws:es:{core.Aws.REGION}:{core.Aws.ACCOUNT_ID}:domain/{props['projectName'].lower()}/*"
 
-        es_policy_statement = iam.PolicyStatement(actions=['es:ESHttp*'],
+        es_policy_statement = iam.PolicyStatement(actions=['es:*'],
                                                   resources=[es_domain_arn])
 
-        es_policy_statement.add_account_root_principal()
+        es_policy_statement.add_arn_principal(cognito_authenticated_role.role_arn)
 
         policy_document = iam.PolicyDocument()
 
@@ -215,13 +220,16 @@ class IotAnalyticsEsStack(core.Stack):
 
         output_bucket.add_event_notification(s3.EventType.OBJECT_CREATED, notification)
 
-        load_ddb_custom_resource = LoadDDBDataCustomResource(self, "LoadDDBData", table_name=power_transformers.table_name,
-                                  table_arn=power_transformers.table_arn)
+        load_ddb_custom_resource = LoadDDBDataCustomResource(self, "LoadDDBData",
+                                                             table_name=power_transformers.table_name,
+                                                             table_arn=power_transformers.table_arn)
 
         load_ddb_custom_resource.node.add_dependency(power_transformers)
 
-        load_es_index_custom_resource = LoadESIndexCustomResource(self, "LoadESIndex", es_host=domain.attr_domain_endpoint,
-                                  es_region=f"{core.Aws.REGION}", es_domain_arn=es_domain_arn)
+        load_es_index_custom_resource = LoadESIndexCustomResource(self, "LoadESIndex",
+                                                                  es_host=domain.attr_domain_endpoint,
+                                                                  es_region=f"{core.Aws.REGION}",
+                                                                  es_domain_arn=es_domain_arn)
 
         load_es_index_custom_resource.node.add_dependency(domain)
 
