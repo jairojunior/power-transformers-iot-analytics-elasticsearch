@@ -1,8 +1,8 @@
-[ ] Kibana Scriptable fields
-
 [ ] IoTTopicRule
 
-[ ] S3 IAM Roles specific to buckets and r/w operations
+[ ] CognitoUserPool
+
+[ ] S3 IAM Roles (for IoT Analytics) specific to buckets and r/w operations
 
 [ ] Scheduled Dataset (IoT Analytics) writes an empty file to S3
 

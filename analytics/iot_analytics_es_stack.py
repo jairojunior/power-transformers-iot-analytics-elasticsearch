@@ -59,6 +59,7 @@ class IotAnalyticsEsStack(core.Stack):
                                   bucket_name=f"{props['projectName'].lower()}-output-{core.Aws.ACCOUNT_ID}",
                                   removal_policy=core.RemovalPolicy.DESTROY)
 
+        # Apply least privilege
         s3_role = iam.Role(self, "IotAnalyticsS3Role",
                            assumed_by=iam.ServicePrincipal("iotanalytics.amazonaws.com"),
                            managed_policies=[iam.ManagedPolicy.from_aws_managed_policy_name('AmazonS3FullAccess')]
@@ -67,6 +68,7 @@ class IotAnalyticsEsStack(core.Stack):
         # s3_role.add_to_policy(iam.PolicyStatement(actions=["s3:PutObject", "s3:DeleteObject", "s3:GetBucketLocation"],
         #                       resources=[f"{bucket.bucket_arn}", f"{bucket.bucket_arn}/*"], effect=iam.Effect.ALLOW))
 
+        # Apply least privilege
         s3_output_role = iam.Role(self, "IotAnalyticsS3OutputRole",
                                   assumed_by=iam.ServicePrincipal("iotanalytics.amazonaws.com"),
                                   managed_policies=[
@@ -233,9 +235,9 @@ class IotAnalyticsEsStack(core.Stack):
 
         load_es_index_custom_resource.node.add_dependency(domain)
 
-        # load_kibana_dashboards_custom_resource = LoadKibanaDashboardsCustomResource(self, "LoadKibanaDashboards",
-        #                                                           es_host=domain.attr_domain_endpoint,
-        #                                                           es_region=f"{core.Aws.REGION}",
-        #                                                           es_domain_arn=es_domain_arn)
-        #
-        # load_kibana_dashboards_custom_resource.node.add_dependency(domain)
+        load_kibana_dashboards_custom_resource = LoadKibanaDashboardsCustomResource(self, "LoadKibanaDashboards",
+                                                                  es_host=domain.attr_domain_endpoint,
+                                                                  es_region=f"{core.Aws.REGION}",
+                                                                  es_domain_arn=es_domain_arn)
+
+        load_kibana_dashboards_custom_resource.node.add_dependency(load_es_index_custom_resource)

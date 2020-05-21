@@ -25,7 +25,7 @@ class LoadKibanaDashboardsCustomResource(core.Construct):
         )
 
         function.add_to_role_policy(
-            iam.PolicyStatement(actions=['es:ESHttpPost'], resources=[es_domain_arn], effect=iam.Effect.ALLOW))
+            iam.PolicyStatement(actions=['es:ESHttpPost', 'es:ESHttpPut'], resources=[es_domain_arn], effect=iam.Effect.ALLOW))
 
         resource = cfn.CustomResource(
             self, "Resource",
